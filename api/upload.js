@@ -32,13 +32,28 @@ const upload = multer({
   },
 });
 
-// Rate limiting untuk anti-spam
+// Rate limiting untuk anti-spam (20 upload per menit, blokir selama 30 detik jika melebihi)
 const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 menit
-  max: 5, // Maksimal 5 request per IP
-  message: 'Too many upload attempts. Please try again in 10 minutes.',
+  windowMs: 60 * 1000, // 1 menit
+  max: 20, // Maksimal 20 request per IP dalam 1 menit
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many upload attempts. Please try again in 30 seconds.',
+    });
+  },
 });
 app.use(limiter);
+
+// Middleware untuk pretty print JSON
+app.set('json spaces', 2); // Format JSON dengan 2 spasi indentasi
+
+// Middleware untuk memblokir metode selain POST
+app.use((req, res, next) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed. Only POST requests are accepted.' });
+  }
+  next();
+});
 
 // Endpoint untuk upload file
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -74,6 +89,12 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
   } catch (error) {
     console.error(error);
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File size exceeds limit. Maximum file size is 25MB.' });
+    }
+    if (error.message.includes('File type not allowed')) {
+      return res.status(400).json({ error: error.message });
+    }
     return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
